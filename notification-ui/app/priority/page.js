@@ -3,33 +3,29 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Box, Container, Typography, Alert, CircularProgress,
-  AppBar, Toolbar, Button, Badge, Tooltip, IconButton,
-  Divider, Paper, Chip
+  AppBar, Toolbar, Button, Badge, Slider, Paper,
+  Divider, Chip, IconButton, Tooltip
 } from "@mui/material";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import StarIcon from "@mui/icons-material/Star";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import Link from "next/link";
 
-import NotificationCard from "../components/NotificationCard";
-import Filter from "../components/Filter";
-import Pagination from "../components/Pagination";
-import { sortNotifications, getReadIds, markAsRead, markAllRead, MOCK_NOTIFICATIONS } from "../utils/helpers";
+import NotificationCard from "../../components/NotificationCard";
+import { sortNotifications, getReadIds, markAsRead, markAllRead, MOCK_NOTIFICATIONS } from "../../utils/helpers";
 
-const LIMIT = 5;
 const API_BASE = "http://20.207.122.201/evaluation-service/notifications";
 
-export default function Home() {
-  const [allData, setAllData]   = useState([]);
-  const [filter, setFilter]     = useState("All");
-  const [page, setPage]         = useState(1);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
-  const [readIds, setReadIds]   = useState(new Set());
+export default function PriorityPage() {
+  const [allData, setAllData]     = useState([]);
+  const [topN, setTopN]           = useState(10);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
+  const [readIds, setReadIds]     = useState(new Set());
   const [usingMock, setUsingMock] = useState(false);
 
-  // Load read IDs from localStorage
   useEffect(() => { setReadIds(getReadIds()); }, []);
 
   const fetchData = useCallback(async () => {
@@ -37,11 +33,7 @@ export default function Home() {
     setError(null);
     try {
       const token = process.env.NEXT_PUBLIC_AUTH_TOKEN;
-      const params = new URLSearchParams();
-      if (filter !== "All") params.set("notification_type", filter);
-      params.set("limit", "100"); // fetch all, paginate client-side
-
-      const res = await fetch(`${API_BASE}?${params}`, {
+      const res = await fetch(`${API_BASE}?limit=100`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -49,19 +41,15 @@ export default function Home() {
       setAllData(sortNotifications(json.notifications || json));
       setUsingMock(false);
     } catch (err) {
-      console.warn("Live API unavailable, using mock data:", err.message);
-      const filtered = filter === "All"
-        ? MOCK_NOTIFICATIONS
-        : MOCK_NOTIFICATIONS.filter(n => n.Type === filter);
-      setAllData(sortNotifications(filtered));
+      console.warn("Using mock data:", err.message);
+      setAllData(sortNotifications(MOCK_NOTIFICATIONS));
       setUsingMock(true);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { setPage(1); }, [filter]);
 
   const handleRead = (id) => {
     markAsRead(id);
@@ -69,14 +57,13 @@ export default function Home() {
   };
 
   const handleMarkAllRead = () => {
-    markAllRead(allData.map(n => n.ID));
+    markAllRead(priorityList.map(n => n.ID));
     setReadIds(getReadIds());
   };
 
-  // Client-side pagination
-  const start     = (page - 1) * LIMIT;
-  const paginated = allData.slice(start, start + LIMIT);
-  const unreadCount = allData.filter(n => !readIds.has(n.ID)).length;
+  const priorityList  = allData.slice(0, topN);
+  const unreadCount   = priorityList.filter(n => !readIds.has(n.ID)).length;
+  const totalUnread   = allData.filter(n => !readIds.has(n.ID)).length;
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#f0f4f8" }}>
@@ -84,7 +71,7 @@ export default function Home() {
       <AppBar position="sticky" elevation={2} sx={{ background: "linear-gradient(135deg, #1565c0, #1e88e5)" }}>
         <Toolbar sx={{ justifyContent: "space-between" }}>
           <Box display="flex" alignItems="center" gap={1}>
-            <Badge badgeContent={unreadCount} color="error" max={99}>
+            <Badge badgeContent={totalUnread} color="error" max={99}>
               <NotificationsIcon />
             </Badge>
             <Typography variant="h6" fontWeight={700}>
@@ -96,9 +83,8 @@ export default function Home() {
               component={Link}
               href="/"
               color="inherit"
-              variant="contained"
               size="small"
-              sx={{ bgcolor: "rgba(255,255,255,0.25)", fontWeight: 700 }}
+              sx={{ fontWeight: 600 }}
               startIcon={<NotificationsIcon />}
             >
               All
@@ -107,8 +93,9 @@ export default function Home() {
               component={Link}
               href="/priority"
               color="inherit"
+              variant="contained"
               size="small"
-              sx={{ fontWeight: 600 }}
+              sx={{ bgcolor: "rgba(255,255,255,0.25)", fontWeight: 700 }}
               startIcon={<StarIcon />}
             >
               Priority
@@ -120,14 +107,18 @@ export default function Home() {
       <Container maxWidth="md" sx={{ py: 3 }}>
         {/* ── Header ── */}
         <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3, border: "1px solid #e0e7ef" }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={1.5}>
-            <Box>
-              <Typography variant="h5" fontWeight={800} color="primary.dark">
-                All Notifications
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {loading ? "Loading…" : `${allData.length} notification${allData.length !== 1 ? "s" : ""}${unreadCount > 0 ? ` · ${unreadCount} unread` : ""}`}
-              </Typography>
+          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={1}>
+            <Box display="flex" alignItems="center" gap={1}>
+              <EmojiEventsIcon color="warning" />
+              <Box>
+                <Typography variant="h5" fontWeight={800} color="primary.dark">
+                  Priority Inbox
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Top {topN} most important notifications
+                  {unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
+                </Typography>
+              </Box>
             </Box>
             <Box display="flex" gap={1}>
               <Tooltip title="Refresh">
@@ -148,14 +139,42 @@ export default function Home() {
             </Box>
           </Box>
 
+          {/* ── Top-N Slider ── */}
+          <Box mt={1}>
+            <Typography variant="body2" color="text.secondary" mb={0.5}>
+              Show top <strong>{topN}</strong> notifications
+            </Typography>
+            <Slider
+              value={topN}
+              onChange={(_, val) => setTopN(val)}
+              min={5}
+              max={Math.max(20, allData.length)}
+              step={5}
+              marks={[
+                { value: 5,  label: "5" },
+                { value: 10, label: "10" },
+                { value: 15, label: "15" },
+                { value: 20, label: "20" },
+              ]}
+              valueLabelDisplay="auto"
+              color="primary"
+              sx={{ maxWidth: 400 }}
+            />
+          </Box>
+
           {usingMock && (
-            <Alert severity="info" sx={{ mb: 1.5, borderRadius: 2 }}>
+            <Alert severity="info" sx={{ mt: 1.5, borderRadius: 2 }}>
               Showing mock data — add <strong>NEXT_PUBLIC_AUTH_TOKEN</strong> to .env.local for live data.
             </Alert>
           )}
-
-          <Filter filter={filter} setFilter={setFilter} />
         </Paper>
+
+        {/* ── Priority legend ── */}
+        <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+          <Chip label="🎓 Placement — highest" color="success" size="small" />
+          <Chip label="📊 Result — medium"    color="warning" size="small" />
+          <Chip label="📅 Event — lowest"     color="error"   size="small" />
+        </Box>
 
         {/* ── States ── */}
         {loading && (
@@ -168,27 +187,34 @@ export default function Home() {
           <Alert severity="error" sx={{ borderRadius: 2 }}>⚠️ {error}</Alert>
         )}
 
-        {!loading && !error && allData.length === 0 && (
+        {!loading && priorityList.length === 0 && (
           <Paper elevation={0} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
             <Typography fontSize={40}>🔕</Typography>
-            <Typography color="text.secondary">No notifications for this filter.</Typography>
+            <Typography color="text.secondary">No notifications found.</Typography>
           </Paper>
         )}
 
         {/* ── Cards ── */}
-        {!loading && paginated.map((item) => (
-          <NotificationCard
-            key={item.ID}
-            item={item}
-            isRead={readIds.has(item.ID)}
-            onRead={handleRead}
-          />
+        {!loading && priorityList.map((item, idx) => (
+          <Box key={item.ID} position="relative">
+            {idx < 3 && (
+              <Chip
+                label={`#${idx + 1}`}
+                size="small"
+                color={idx === 0 ? "warning" : "default"}
+                sx={{
+                  position: "absolute", top: 8, right: 8, zIndex: 1,
+                  fontWeight: 700, fontSize: "11px"
+                }}
+              />
+            )}
+            <NotificationCard
+              item={item}
+              isRead={readIds.has(item.ID)}
+              onRead={handleRead}
+            />
+          </Box>
         ))}
-
-        {/* ── Pagination ── */}
-        {!loading && (
-          <Pagination total={allData.length} page={page} setPage={setPage} limit={LIMIT} />
-        )}
       </Container>
     </Box>
   );
