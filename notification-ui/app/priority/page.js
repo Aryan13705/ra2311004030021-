@@ -6,6 +6,7 @@ import NotificationCard from "../../components/NotificationCard";
 import {
   rankNotifications, loadReadSet, persistRead, SAMPLE_DATA
 } from "../../utils/helpers";
+import logger from "../../utils/logger";
 
 const ENDPOINT = "http://20.207.122.201/evaluation-service/notifications";
 
@@ -16,30 +17,59 @@ export default function PriorityPage() {
   const [readSet,  setReadSet]  = useState(new Set());
   const [mockMode, setMockMode] = useState(false);
 
-  useEffect(() => setReadSet(loadReadSet()), []);
+  useEffect(() => {
+    logger.info("PriorityPage mounted — loading read-state from localStorage");
+    setReadSet(loadReadSet());
+  }, []);
 
   const pull = useCallback(async () => {
+    logger.info(`Fetching all notifications for priority ranking from ${ENDPOINT}`);
     setBusy(true);
+
     try {
       const token = process.env.NEXT_PUBLIC_AUTH_TOKEN;
-      const resp  = await fetch(`${ENDPOINT}?limit=100`, {
+
+      if (!token) {
+        logger.warn("No AUTH_TOKEN found — sending unauthenticated request");
+      }
+
+      const resp = await fetch(`${ENDPOINT}?limit=100`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!resp.ok) throw new Error("non-2xx");
-      const body = await resp.json();
-      setInbox(rankNotifications(body.notifications ?? body));
+
+      logger.info(`Priority fetch response — status ${resp.status}`);
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      const body  = await resp.json();
+      const items = rankNotifications(body.notifications ?? body);
+
+      logger.info(`Ranked ${items.length} notifications — top item: [${items[0]?.Type}] ${items[0]?.Message?.slice(0, 40)}`);
+      logger.debug("Full priority order loaded", { count: items.length });
+
+      setInbox(items);
       setMockMode(false);
-    } catch {
-      setInbox(rankNotifications(SAMPLE_DATA));
+
+    } catch (err) {
+      logger.warn(`Priority API unavailable (${err.message}) — using mock dataset`);
+      const ranked = rankNotifications(SAMPLE_DATA);
+      logger.info(`Mock dataset ranked — ${ranked.length} items`);
+      setInbox(ranked);
       setMockMode(true);
     } finally {
       setBusy(false);
+      logger.debug("Priority fetch cycle complete");
     }
   }, []);
 
   useEffect(() => { pull(); }, [pull]);
 
+  useEffect(() => {
+    logger.info(`Top-N slider updated to ${topN}`);
+  }, [topN]);
+
   function markRead(id) {
+    logger.info(`Priority: marking notification read — ID ${id}`);
     const next = new Set(readSet);
     next.add(id);
     persistRead(next);
@@ -47,6 +77,7 @@ export default function PriorityPage() {
   }
 
   function markAllRead() {
+    logger.info(`Priority: bulk mark-read for top ${shortlist.length} items`);
     const next = new Set(readSet);
     shortlist.forEach(n => next.add(n.ID));
     persistRead(next);
@@ -56,6 +87,8 @@ export default function PriorityPage() {
   const shortlist   = inbox.slice(0, topN);
   const unreadHere  = shortlist.filter(n => !readSet.has(n.ID)).length;
   const totalUnread = inbox.filter(n => !readSet.has(n.ID)).length;
+
+  logger.debug(`PriorityPage render — topN=${topN} shortlist=${shortlist.length} unread=${unreadHere}`);
 
   return (
     <div className="shell">
@@ -98,7 +131,11 @@ export default function PriorityPage() {
             value={topN}
             onChange={e => setTopN(Number(e.target.value))}
           />
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"10px", color:"var(--text-muted)", fontFamily:"var(--mono)", marginTop:4 }}>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            fontSize: "10px", color: "var(--text-muted)",
+            fontFamily: "var(--mono)", marginTop: 4
+          }}>
             <span>5</span><span>10</span><span>15</span><span>20</span>
           </div>
         </div>
@@ -107,8 +144,8 @@ export default function PriorityPage() {
 
         <button
           className="nav-link"
-          onClick={pull}
-          style={{ background:"none", border:"none", cursor:"pointer", width:"100%", textAlign:"left" }}
+          onClick={() => { logger.info("Priority: manual refresh triggered"); pull(); }}
+          style={{ background: "none", border: "none", cursor: "pointer", width: "100%", textAlign: "left" }}
         >
           <span className="nav-icon">↻</span>
           Refresh
@@ -121,12 +158,8 @@ export default function PriorityPage() {
           <h1 className="page-title">⭐ Priority Inbox</h1>
           <div className="page-meta">
             <span>{busy ? "syncing…" : `Top ${topN} of ${inbox.length}`}</span>
-            {unreadHere > 0 && (
-              <><span className="meta-dot">·</span><span>{unreadHere} unread</span></>
-            )}
-            {mockMode && (
-              <><span className="meta-dot">·</span><span style={{ color:"#f59e0b" }}>demo data</span></>
-            )}
+            {unreadHere > 0 && <><span className="meta-dot">·</span><span>{unreadHere} unread</span></>}
+            {mockMode && <><span className="meta-dot">·</span><span style={{ color: "#f59e0b" }}>demo data</span></>}
           </div>
         </div>
 
@@ -138,18 +171,18 @@ export default function PriorityPage() {
 
         {/* Priority legend */}
         <div className="legend-row">
-          <span className="legend-chip" style={{ background:"#052e16", color:"#22c55e" }}>🎓 Placement — weight 3</span>
-          <span className="legend-chip" style={{ background:"#451a03", color:"#f59e0b" }}>📈 Result — weight 2</span>
-          <span className="legend-chip" style={{ background:"#4c0519", color:"#f43f5e" }}>📅 Event — weight 1</span>
+          <span className="legend-chip" style={{ background: "#052e16", color: "#22c55e" }}>🎓 Placement — weight 3</span>
+          <span className="legend-chip" style={{ background: "#451a03", color: "#f59e0b" }}>📈 Result — weight 2</span>
+          <span className="legend-chip" style={{ background: "#4c0519", color: "#f43f5e" }}>📅 Event — weight 1</span>
         </div>
 
         <div className="toolbar">
           {unreadHere > 0 && (
-            <button className="btn btn-ghost" onClick={markAllRead}>
-              ✓ Mark all read
-            </button>
+            <button className="btn btn-ghost" onClick={markAllRead}>✓ Mark all read</button>
           )}
-          <button className="btn btn-ghost" onClick={pull}>↻ Refresh</button>
+          <button className="btn btn-ghost" onClick={() => { logger.info("Priority: toolbar refresh"); pull(); }}>
+            ↻ Refresh
+          </button>
         </div>
 
         {busy && <div className="spinner" />}
