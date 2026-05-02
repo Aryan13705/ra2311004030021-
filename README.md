@@ -173,5 +173,6 @@ Supported `notification_type` values: `Placement`, `Result`, `Event`
 
 ## Screenshot
 
-![Stage 2 UI](notification-ui/Screenshot%202026-05-02%20at%2012.01.04%E2%80%AFPM.png)
+![Stage 2 UI](notification-ui/output2.png)
+
 
