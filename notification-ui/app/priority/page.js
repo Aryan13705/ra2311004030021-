@@ -1,221 +1,180 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  Box, Container, Typography, Alert, CircularProgress,
-  AppBar, Toolbar, Button, Badge, Slider, Paper,
-  Divider, Chip, IconButton, Tooltip
-} from "@mui/material";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-import StarIcon from "@mui/icons-material/Star";
-import DoneAllIcon from "@mui/icons-material/DoneAll";
-import RefreshIcon from "@mui/icons-material/Refresh";
-import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import Link from "next/link";
-
 import NotificationCard from "../../components/NotificationCard";
-import { sortNotifications, getReadIds, markAsRead, markAllRead, MOCK_NOTIFICATIONS } from "../../utils/helpers";
+import {
+  rankNotifications, loadReadSet, persistRead, SAMPLE_DATA
+} from "../../utils/helpers";
 
-const API_BASE = "http://20.207.122.201/evaluation-service/notifications";
+const ENDPOINT = "http://20.207.122.201/evaluation-service/notifications";
 
 export default function PriorityPage() {
-  const [allData, setAllData]     = useState([]);
-  const [topN, setTopN]           = useState(10);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState(null);
-  const [readIds, setReadIds]     = useState(new Set());
-  const [usingMock, setUsingMock] = useState(false);
+  const [inbox,    setInbox]    = useState([]);
+  const [topN,     setTopN]     = useState(10);
+  const [busy,     setBusy]     = useState(true);
+  const [readSet,  setReadSet]  = useState(new Set());
+  const [mockMode, setMockMode] = useState(false);
 
-  useEffect(() => { setReadIds(getReadIds()); }, []);
+  useEffect(() => setReadSet(loadReadSet()), []);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const pull = useCallback(async () => {
+    setBusy(true);
     try {
       const token = process.env.NEXT_PUBLIC_AUTH_TOKEN;
-      const res = await fetch(`${API_BASE}?limit=100`, {
+      const resp  = await fetch(`${ENDPOINT}?limit=100`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setAllData(sortNotifications(json.notifications || json));
-      setUsingMock(false);
-    } catch (err) {
-      console.warn("Using mock data:", err.message);
-      setAllData(sortNotifications(MOCK_NOTIFICATIONS));
-      setUsingMock(true);
+      if (!resp.ok) throw new Error("non-2xx");
+      const body = await resp.json();
+      setInbox(rankNotifications(body.notifications ?? body));
+      setMockMode(false);
+    } catch {
+      setInbox(rankNotifications(SAMPLE_DATA));
+      setMockMode(true);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { pull(); }, [pull]);
 
-  const handleRead = (id) => {
-    markAsRead(id);
-    setReadIds(getReadIds());
-  };
+  function markRead(id) {
+    const next = new Set(readSet);
+    next.add(id);
+    persistRead(next);
+    setReadSet(next);
+  }
 
-  const handleMarkAllRead = () => {
-    markAllRead(priorityList.map(n => n.ID));
-    setReadIds(getReadIds());
-  };
+  function markAllRead() {
+    const next = new Set(readSet);
+    shortlist.forEach(n => next.add(n.ID));
+    persistRead(next);
+    setReadSet(next);
+  }
 
-  const priorityList  = allData.slice(0, topN);
-  const unreadCount   = priorityList.filter(n => !readIds.has(n.ID)).length;
-  const totalUnread   = allData.filter(n => !readIds.has(n.ID)).length;
+  const shortlist   = inbox.slice(0, topN);
+  const unreadHere  = shortlist.filter(n => !readSet.has(n.ID)).length;
+  const totalUnread = inbox.filter(n => !readSet.has(n.ID)).length;
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#f0f4f8" }}>
-      {/* ── AppBar ── */}
-      <AppBar position="sticky" elevation={2} sx={{ background: "linear-gradient(135deg, #1565c0, #1e88e5)" }}>
-        <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <Badge badgeContent={totalUnread} color="error" max={99}>
-              <NotificationsIcon />
-            </Badge>
-            <Typography variant="h6" fontWeight={700}>
-              Campus Notifications
-            </Typography>
-          </Box>
-          <Box display="flex" gap={1}>
-            <Button
-              component={Link}
-              href="/"
-              color="inherit"
-              size="small"
-              sx={{ fontWeight: 600 }}
-              startIcon={<NotificationsIcon />}
-            >
-              All
-            </Button>
-            <Button
-              component={Link}
-              href="/priority"
-              color="inherit"
-              variant="contained"
-              size="small"
-              sx={{ bgcolor: "rgba(255,255,255,0.25)", fontWeight: 700 }}
-              startIcon={<StarIcon />}
-            >
-              Priority
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
+    <div className="shell">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-dot">📢</div>
+          <div>
+            <div className="brand-name">Campus<br />Notify</div>
+          </div>
+        </div>
 
-      <Container maxWidth="md" sx={{ py: 3 }}>
-        {/* ── Header ── */}
-        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3, border: "1px solid #e0e7ef" }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={1}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <EmojiEventsIcon color="warning" />
-              <Box>
-                <Typography variant="h5" fontWeight={800} color="primary.dark">
-                  Priority Inbox
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Top {topN} most important notifications
-                  {unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
-                </Typography>
-              </Box>
-            </Box>
-            <Box display="flex" gap={1}>
-              <Tooltip title="Refresh">
-                <IconButton onClick={fetchData} size="small" color="primary">
-                  <RefreshIcon />
-                </IconButton>
-              </Tooltip>
-              {unreadCount > 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<DoneAllIcon />}
-                  onClick={handleMarkAllRead}
-                >
-                  Mark all read
-                </Button>
-              )}
-            </Box>
-          </Box>
+        <p className="nav-section-label">Pages</p>
 
-          {/* ── Top-N Slider ── */}
-          <Box mt={1}>
-            <Typography variant="body2" color="text.secondary" mb={0.5}>
-              Show top <strong>{topN}</strong> notifications
-            </Typography>
-            <Slider
-              value={topN}
-              onChange={(_, val) => setTopN(val)}
-              min={5}
-              max={Math.max(20, allData.length)}
-              step={5}
-              marks={[
-                { value: 5,  label: "5" },
-                { value: 10, label: "10" },
-                { value: 15, label: "15" },
-                { value: 20, label: "20" },
-              ]}
-              valueLabelDisplay="auto"
-              color="primary"
-              sx={{ maxWidth: 400 }}
-            />
-          </Box>
+        <Link href="/" className="nav-link">
+          <span className="nav-icon">📬</span>
+          All Notifications
+          {totalUnread > 0 && <span className="badge-count">{totalUnread}</span>}
+        </Link>
 
-          {usingMock && (
-            <Alert severity="info" sx={{ mt: 1.5, borderRadius: 2 }}>
-              Showing mock data — add <strong>NEXT_PUBLIC_AUTH_TOKEN</strong> to .env.local for live data.
-            </Alert>
-          )}
-        </Paper>
+        <Link href="/priority" className="nav-link active">
+          <span className="nav-icon">⭐</span>
+          Priority Inbox
+        </Link>
 
-        {/* ── Priority legend ── */}
-        <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-          <Chip label="🎓 Placement — highest" color="success" size="small" />
-          <Chip label="📊 Result — medium"    color="warning" size="small" />
-          <Chip label="📅 Event — lowest"     color="error"   size="small" />
-        </Box>
+        <div className="sidebar-divider" />
 
-        {/* ── States ── */}
-        {loading && (
-          <Box display="flex" justifyContent="center" py={6}>
-            <CircularProgress />
-          </Box>
-        )}
+        {/* Top-N Slider */}
+        <div style={{ padding: "4px 20px" }}>
+          <p className="filter-label" style={{ marginBottom: 8 }}>Top-N limit</p>
+          <div className="slider-row">
+            <span className="slider-val">{topN}</span>
+            <span className="slider-label">notifications</span>
+          </div>
+          <input
+            type="range"
+            min={5}
+            max={Math.max(20, inbox.length)}
+            step={5}
+            value={topN}
+            onChange={e => setTopN(Number(e.target.value))}
+          />
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"10px", color:"var(--text-muted)", fontFamily:"var(--mono)", marginTop:4 }}>
+            <span>5</span><span>10</span><span>15</span><span>20</span>
+          </div>
+        </div>
 
-        {!loading && error && (
-          <Alert severity="error" sx={{ borderRadius: 2 }}>⚠️ {error}</Alert>
-        )}
+        <div className="sidebar-divider" />
 
-        {!loading && priorityList.length === 0 && (
-          <Paper elevation={0} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
-            <Typography fontSize={40}>🔕</Typography>
-            <Typography color="text.secondary">No notifications found.</Typography>
-          </Paper>
-        )}
+        <button
+          className="nav-link"
+          onClick={pull}
+          style={{ background:"none", border:"none", cursor:"pointer", width:"100%", textAlign:"left" }}
+        >
+          <span className="nav-icon">↻</span>
+          Refresh
+        </button>
+      </aside>
 
-        {/* ── Cards ── */}
-        {!loading && priorityList.map((item, idx) => (
-          <Box key={item.ID} position="relative">
-            {idx < 3 && (
-              <Chip
-                label={`#${idx + 1}`}
-                size="small"
-                color={idx === 0 ? "warning" : "default"}
-                sx={{
-                  position: "absolute", top: 8, right: 8, zIndex: 1,
-                  fontWeight: 700, fontSize: "11px"
-                }}
-              />
+      {/* ── Main ── */}
+      <main className="content">
+        <div className="page-header">
+          <h1 className="page-title">⭐ Priority Inbox</h1>
+          <div className="page-meta">
+            <span>{busy ? "syncing…" : `Top ${topN} of ${inbox.length}`}</span>
+            {unreadHere > 0 && (
+              <><span className="meta-dot">·</span><span>{unreadHere} unread</span></>
             )}
-            <NotificationCard
-              item={item}
-              isRead={readIds.has(item.ID)}
-              onRead={handleRead}
-            />
-          </Box>
-        ))}
-      </Container>
-    </Box>
+            {mockMode && (
+              <><span className="meta-dot">·</span><span style={{ color:"#f59e0b" }}>demo data</span></>
+            )}
+          </div>
+        </div>
+
+        {mockMode && (
+          <div className="info-banner">
+            ℹ️ &nbsp;No live token — showing demo data. Set <code>NEXT_PUBLIC_AUTH_TOKEN</code> in <code>.env.local</code>.
+          </div>
+        )}
+
+        {/* Priority legend */}
+        <div className="legend-row">
+          <span className="legend-chip" style={{ background:"#052e16", color:"#22c55e" }}>🎓 Placement — weight 3</span>
+          <span className="legend-chip" style={{ background:"#451a03", color:"#f59e0b" }}>📈 Result — weight 2</span>
+          <span className="legend-chip" style={{ background:"#4c0519", color:"#f43f5e" }}>📅 Event — weight 1</span>
+        </div>
+
+        <div className="toolbar">
+          {unreadHere > 0 && (
+            <button className="btn btn-ghost" onClick={markAllRead}>
+              ✓ Mark all read
+            </button>
+          )}
+          <button className="btn btn-ghost" onClick={pull}>↻ Refresh</button>
+        </div>
+
+        {busy && <div className="spinner" />}
+
+        {!busy && shortlist.length === 0 && (
+          <div className="state-box">
+            <div className="state-emoji">📭</div>
+            <p>No notifications yet.</p>
+          </div>
+        )}
+
+        {!busy && (
+          <div className="notif-list">
+            {shortlist.map((item, idx) => (
+              <NotificationCard
+                key={item.ID}
+                item={item}
+                isRead={readSet.has(item.ID)}
+                onRead={markRead}
+                rank={idx + 1}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

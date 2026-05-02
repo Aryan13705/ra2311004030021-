@@ -1,195 +1,172 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import {
-  Box, Container, Typography, Alert, CircularProgress,
-  AppBar, Toolbar, Button, Badge, Tooltip, IconButton,
-  Divider, Paper, Chip
-} from "@mui/material";
-import NotificationsIcon from "@mui/icons-material/Notifications";
-import StarIcon from "@mui/icons-material/Star";
-import DoneAllIcon from "@mui/icons-material/DoneAll";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import Link from "next/link";
-
 import NotificationCard from "../components/NotificationCard";
-import Filter from "../components/Filter";
-import Pagination from "../components/Pagination";
-import { sortNotifications, getReadIds, markAsRead, markAllRead, MOCK_NOTIFICATIONS } from "../utils/helpers";
+import SidebarFilter from "../components/Filter";
+import Pager from "../components/Pagination";
+import {
+  rankNotifications, loadReadSet, persistRead, SAMPLE_DATA
+} from "../utils/helpers";
 
-const LIMIT = 5;
-const API_BASE = "http://20.207.122.201/evaluation-service/notifications";
+const PER_PAGE   = 5;
+const ENDPOINT   = "http://20.207.122.201/evaluation-service/notifications";
 
-export default function Home() {
-  const [allData, setAllData]   = useState([]);
-  const [filter, setFilter]     = useState("All");
-  const [page, setPage]         = useState(1);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
-  const [readIds, setReadIds]   = useState(new Set());
-  const [usingMock, setUsingMock] = useState(false);
+export default function InboxPage() {
+  const [inbox,    setInbox]    = useState([]);
+  const [filter,   setFilter]   = useState("All");
+  const [page,     setPage]     = useState(1);
+  const [busy,     setBusy]     = useState(true);
+  const [readSet,  setReadSet]  = useState(new Set());
+  const [mockMode, setMockMode] = useState(false);
 
-  // Load read IDs from localStorage
-  useEffect(() => { setReadIds(getReadIds()); }, []);
+  // hydrate read state from localStorage after mount
+  useEffect(() => setReadSet(loadReadSet()), []);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const pullNotifications = useCallback(async () => {
+    setBusy(true);
     try {
       const token = process.env.NEXT_PUBLIC_AUTH_TOKEN;
-      const params = new URLSearchParams();
-      if (filter !== "All") params.set("notification_type", filter);
-      params.set("limit", "100"); // fetch all, paginate client-side
-
-      const res = await fetch(`${API_BASE}?${params}`, {
+      const qs    = new URLSearchParams({ limit: "100" });
+      const resp  = await fetch(`${ENDPOINT}?${qs}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setAllData(sortNotifications(json.notifications || json));
-      setUsingMock(false);
-    } catch (err) {
-      console.warn("Live API unavailable, using mock data:", err.message);
-      const filtered = filter === "All"
-        ? MOCK_NOTIFICATIONS
-        : MOCK_NOTIFICATIONS.filter(n => n.Type === filter);
-      setAllData(sortNotifications(filtered));
-      setUsingMock(true);
+      if (!resp.ok) throw new Error("non-2xx");
+      const body = await resp.json();
+      setInbox(rankNotifications(body.notifications ?? body));
+      setMockMode(false);
+    } catch {
+      setInbox(rankNotifications(SAMPLE_DATA));
+      setMockMode(true);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }, [filter]);
+  }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { pullNotifications(); }, [pullNotifications]);
   useEffect(() => { setPage(1); }, [filter]);
 
-  const handleRead = (id) => {
-    markAsRead(id);
-    setReadIds(getReadIds());
-  };
+  function markRead(id) {
+    const next = new Set(readSet);
+    next.add(id);
+    persistRead(next);
+    setReadSet(next);
+  }
 
-  const handleMarkAllRead = () => {
-    markAllRead(allData.map(n => n.ID));
-    setReadIds(getReadIds());
-  };
+  function markAllRead() {
+    const next = new Set(readSet);
+    visible.forEach(n => next.add(n.ID));
+    persistRead(next);
+    setReadSet(next);
+  }
 
-  // Client-side pagination
-  const start     = (page - 1) * LIMIT;
-  const paginated = allData.slice(start, start + LIMIT);
-  const unreadCount = allData.filter(n => !readIds.has(n.ID)).length;
+  const visible  = filter === "All" ? inbox : inbox.filter(n => n.Type === filter);
+  const slice    = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const unread   = inbox.filter(n => !readSet.has(n.ID)).length;
+
+  const counts = {
+    All:       inbox.length,
+    Placement: inbox.filter(n => n.Type === "Placement").length,
+    Result:    inbox.filter(n => n.Type === "Result").length,
+    Event:     inbox.filter(n => n.Type === "Event").length,
+  };
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#f0f4f8" }}>
-      {/* ── AppBar ── */}
-      <AppBar position="sticky" elevation={2} sx={{ background: "linear-gradient(135deg, #1565c0, #1e88e5)" }}>
-        <Toolbar sx={{ justifyContent: "space-between" }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <Badge badgeContent={unreadCount} color="error" max={99}>
-              <NotificationsIcon />
-            </Badge>
-            <Typography variant="h6" fontWeight={700}>
-              Campus Notifications
-            </Typography>
-          </Box>
-          <Box display="flex" gap={1}>
-            <Button
-              component={Link}
-              href="/"
-              color="inherit"
-              variant="contained"
-              size="small"
-              sx={{ bgcolor: "rgba(255,255,255,0.25)", fontWeight: 700 }}
-              startIcon={<NotificationsIcon />}
-            >
-              All
-            </Button>
-            <Button
-              component={Link}
-              href="/priority"
-              color="inherit"
-              size="small"
-              sx={{ fontWeight: 600 }}
-              startIcon={<StarIcon />}
-            >
-              Priority
-            </Button>
-          </Box>
-        </Toolbar>
-      </AppBar>
+    <div className="shell">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <div className="brand-dot">📢</div>
+          <div>
+            <div className="brand-name">Campus<br />Notify</div>
+          </div>
+        </div>
 
-      <Container maxWidth="md" sx={{ py: 3 }}>
-        {/* ── Header ── */}
-        <Paper elevation={0} sx={{ p: 2.5, mb: 2, borderRadius: 3, border: "1px solid #e0e7ef" }}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} mb={1.5}>
-            <Box>
-              <Typography variant="h5" fontWeight={800} color="primary.dark">
-                All Notifications
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {loading ? "Loading…" : `${allData.length} notification${allData.length !== 1 ? "s" : ""}${unreadCount > 0 ? ` · ${unreadCount} unread` : ""}`}
-              </Typography>
-            </Box>
-            <Box display="flex" gap={1}>
-              <Tooltip title="Refresh">
-                <IconButton onClick={fetchData} size="small" color="primary">
-                  <RefreshIcon />
-                </IconButton>
-              </Tooltip>
-              {unreadCount > 0 && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<DoneAllIcon />}
-                  onClick={handleMarkAllRead}
-                >
-                  Mark all read
-                </Button>
-              )}
-            </Box>
-          </Box>
+        <p className="nav-section-label">Pages</p>
 
-          {usingMock && (
-            <Alert severity="info" sx={{ mb: 1.5, borderRadius: 2 }}>
-              Showing mock data — add <strong>NEXT_PUBLIC_AUTH_TOKEN</strong> to .env.local for live data.
-            </Alert>
+        <Link href="/" className="nav-link active">
+          <span className="nav-icon">📬</span>
+          All Notifications
+          {unread > 0 && <span className="badge-count">{unread}</span>}
+        </Link>
+
+        <Link href="/priority" className="nav-link">
+          <span className="nav-icon">⭐</span>
+          Priority Inbox
+        </Link>
+
+        <div className="sidebar-divider" />
+
+        <SidebarFilter active={filter} onChange={setFilter} counts={counts} />
+
+        <div className="sidebar-divider" />
+
+        <button
+          className="nav-link"
+          onClick={pullNotifications}
+          style={{ background: "none", border: "none", cursor: "pointer", width: "100%", textAlign: "left" }}
+        >
+          <span className="nav-icon">↻</span>
+          Refresh
+        </button>
+      </aside>
+
+      {/* ── Main ── */}
+      <main className="content">
+        <div className="page-header">
+          <h1 className="page-title">All Notifications</h1>
+          <div className="page-meta">
+            <span>{busy ? "syncing…" : `${visible.length} notifications`}</span>
+            {unread > 0 && <><span className="meta-dot">·</span><span>{unread} unread</span></>}
+            {mockMode && <><span className="meta-dot">·</span><span style={{color:"#f59e0b"}}>demo data</span></>}
+          </div>
+        </div>
+
+        {mockMode && (
+          <div className="info-banner">
+            ℹ️ &nbsp;No live token — showing demo data. Set <code>NEXT_PUBLIC_AUTH_TOKEN</code> in <code>.env.local</code> to connect the real API.
+          </div>
+        )}
+
+        <div className="toolbar">
+          {unread > 0 && (
+            <button className="btn btn-ghost" onClick={markAllRead}>
+              ✓ Mark visible read
+            </button>
           )}
+        </div>
 
-          <Filter filter={filter} setFilter={setFilter} />
-        </Paper>
+        {busy && <div className="spinner" />}
 
-        {/* ── States ── */}
-        {loading && (
-          <Box display="flex" justifyContent="center" py={6}>
-            <CircularProgress />
-          </Box>
+        {!busy && visible.length === 0 && (
+          <div className="state-box">
+            <div className="state-emoji">🔕</div>
+            <p>No notifications match this filter.</p>
+          </div>
         )}
 
-        {!loading && error && (
-          <Alert severity="error" sx={{ borderRadius: 2 }}>⚠️ {error}</Alert>
+        {!busy && (
+          <div className="notif-list">
+            {slice.map(item => (
+              <NotificationCard
+                key={item.ID}
+                item={item}
+                isRead={readSet.has(item.ID)}
+                onRead={markRead}
+              />
+            ))}
+          </div>
         )}
 
-        {!loading && !error && allData.length === 0 && (
-          <Paper elevation={0} sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
-            <Typography fontSize={40}>🔕</Typography>
-            <Typography color="text.secondary">No notifications for this filter.</Typography>
-          </Paper>
-        )}
-
-        {/* ── Cards ── */}
-        {!loading && paginated.map((item) => (
-          <NotificationCard
-            key={item.ID}
-            item={item}
-            isRead={readIds.has(item.ID)}
-            onRead={handleRead}
+        {!busy && (
+          <Pager
+            total={visible.length}
+            current={page}
+            perPage={PER_PAGE}
+            onSelect={setPage}
           />
-        ))}
-
-        {/* ── Pagination ── */}
-        {!loading && (
-          <Pagination total={allData.length} page={page} setPage={setPage} limit={LIMIT} />
         )}
-      </Container>
-    </Box>
+      </main>
+    </div>
   );
 }

@@ -1,48 +1,27 @@
-import { ToggleButtonGroup, ToggleButton, Box } from "@mui/material";
-import SchoolIcon from "@mui/icons-material/School";
-import BarChartIcon from "@mui/icons-material/BarChart";
-import EventIcon from "@mui/icons-material/Event";
-import AllInboxIcon from "@mui/icons-material/AllInbox";
-
-const TYPES = [
-  { value: "All",       label: "All",       icon: <AllInboxIcon fontSize="small" /> },
-  { value: "Placement", label: "Placement", icon: <SchoolIcon fontSize="small" /> },
-  { value: "Result",    label: "Result",    icon: <BarChartIcon fontSize="small" /> },
-  { value: "Event",     label: "Event",     icon: <EventIcon fontSize="small" /> },
+const FILTERS = [
+  { key: "All",       icon: "⬡",  label: "All",        dot: "#64748b" },
+  { key: "Placement", icon: "🎓",  label: "Placements", dot: "#22c55e" },
+  { key: "Result",    icon: "📈",  label: "Results",    dot: "#f59e0b" },
+  { key: "Event",     icon: "📅",  label: "Events",     dot: "#f43f5e" },
 ];
 
-export default function Filter({ filter, setFilter }) {
+export default function SidebarFilter({ active, onChange, counts }) {
   return (
-    <Box mb={2}>
-      <ToggleButtonGroup
-        value={filter}
-        exclusive
-        onChange={(_, val) => val && setFilter(val)}
-        size="small"
-        sx={{ flexWrap: "wrap", gap: 0.5 }}
-      >
-        {TYPES.map(({ value, label, icon }) => (
-          <ToggleButton
-            key={value}
-            value={value}
-            sx={{
-              borderRadius: "20px !important",
-              border: "1px solid rgba(0,0,0,0.15) !important",
-              px: 2,
-              fontWeight: 600,
-              fontSize: "13px",
-              gap: 0.5,
-              "&.Mui-selected": {
-                background: "linear-gradient(135deg, #1976d2, #42a5f5)",
-                color: "#fff",
-                boxShadow: "0 2px 8px rgba(25,118,210,0.4)",
-              }
-            }}
-          >
-            {icon} {label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
-    </Box>
+    <div>
+      <p className="filter-label">Filter by type</p>
+      {FILTERS.map(({ key, icon, label, dot }) => (
+        <button
+          key={key}
+          className={`filter-btn ${active === key ? "selected" : ""}`}
+          onClick={() => onChange(key)}
+        >
+          <span className="filter-dot" style={{ background: active === key ? dot : "#2a3a5a" }} />
+          <span>{icon} {label}</span>
+          {counts?.[key] !== undefined && (
+            <span className="filter-count">{counts[key]}</span>
+          )}
+        </button>
+      ))}
+    </div>
   );
 }

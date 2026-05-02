@@ -1,20 +1,34 @@
-import { Pagination as MuiPagination, Box } from "@mui/material";
-
-export default function Pagination({ total, page, setPage, limit }) {
-  const totalPages = Math.ceil(total / limit);
-  if (totalPages <= 1) return null;
+export default function Pager({ total, current, perPage, onSelect }) {
+  const pages = Math.ceil(total / perPage);
+  if (pages <= 1) return null;
 
   return (
-    <Box display="flex" justifyContent="center" mt={2}>
-      <MuiPagination
-        count={totalPages}
-        page={page}
-        onChange={(_, val) => setPage(val)}
-        color="primary"
-        shape="rounded"
-        showFirstButton
-        showLastButton
-      />
-    </Box>
+    <div className="pager">
+      <button
+        className="pager-btn"
+        disabled={current === 1}
+        onClick={() => onSelect(current - 1)}
+      >
+        ←
+      </button>
+
+      {Array.from({ length: pages }, (_, i) => i + 1).map(n => (
+        <button
+          key={n}
+          className={`pager-btn ${current === n ? "active" : ""}`}
+          onClick={() => onSelect(n)}
+        >
+          {n}
+        </button>
+      ))}
+
+      <button
+        className="pager-btn"
+        disabled={current === pages}
+        onClick={() => onSelect(current + 1)}
+      >
+        →
+      </button>
+    </div>
   );
 }
