@@ -85,3 +85,93 @@ Screenshot of actual output → `output.png`
 
 
 ![Output](output.png)
+
+# Stage 2
+
+## Overview
+
+A responsive **React/Next.js** frontend for the Campus Notification platform. Displays all notifications with filtering and pagination, and a dedicated **Priority Inbox** that surfaces the top-N most important notifications first.
+
+Live at: **http://localhost:3000** (run `npm run dev` inside `notification-ui/`)
+
+## Project Structure
+
+```
+notification-ui/
+├── app/
+│   ├── layout.tsx          # Root layout — Plus Jakarta Sans font, metadata
+│   ├── globals.css         # Full custom dark theme (CSS variables, no framework)
+│   ├── page.js             # All Notifications page
+│   └── priority/
+│       └── page.js         # Priority Inbox page
+│
+├── components/
+│   ├── NotificationCard.js # Individual notification card (read/unread state)
+│   ├── Filter.js           # Sidebar type filter (All / Placement / Result / Event)
+│   └── Pagination.js       # Custom prev/next paginator
+│
+└── utils/
+    ├── helpers.js          # Priority ranking, time formatter, localStorage helpers
+    └── logger.js           # Frontend logging middleware (mirrors backend logger.js)
+```
+
+## Features
+
+| Feature | Implementation |
+|---|---|
+| **All Notifications page** | `/` — full list, filterable by type, paginated (5/page) |
+| **Priority Inbox page** | `/priority` — top-N sorted by weight + recency, adjustable slider |
+| **Filter by type** | Sidebar filter: All / Placement / Result / Event with counts |
+| **Pagination** | Custom prev/next pager, resets on filter change |
+| **Read / Unread** | Click card to mark read; pulsing dot = unread; greyed out = read; persisted to `localStorage` |
+| **Priority ranking** | Placement (3) > Result (2) > Event (1) + recency tiebreaker |
+| **Rank badges** | #1, #2, #3 badges on top cards in Priority Inbox |
+| **Top-N slider** | Sidebar range slider (5–20) to adjust how many priority items show |
+| **API query params** | Passes `?limit=&notification_type=` to the evaluation-service API |
+| **Auth header** | `Authorization: Bearer <token>` via `NEXT_PUBLIC_AUTH_TOKEN` in `.env.local` |
+| **Mock fallback** | Falls back to local dataset if API is unreachable — UI always renders |
+| **Loading state** | CSS spinner during fetch |
+| **Error state** | Info banner when running on mock data |
+| **Logging** | Every fetch, filter, mark-read and pagination event logged via `utils/logger.js` |
+| **Responsive** | Sidebar collapses to horizontal row on mobile |
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Styling**: Custom CSS only (`globals.css`) — no Tailwind, no MUI
+- **Font**: Plus Jakarta Sans (Google Fonts)
+- **State**: React `useState` / `useEffect` / `useCallback`
+- **Persistence**: `localStorage` for read/unread tracking
+- **Logging**: Custom `utils/logger.js` middleware — `[INFO]` / `[WARN]` / `[ERROR]` / `[DEBUG]`
+
+## Setup & Run
+
+```bash
+cd notification-ui
+npm install
+npm run dev          # starts on http://localhost:3000
+```
+
+To connect the live evaluation API, add your token to `notification-ui/.env.local`:
+
+```
+NEXT_PUBLIC_AUTH_TOKEN=your_bearer_token_here
+```
+
+Without a token the app falls back to the built-in mock dataset automatically.
+
+## API Integration
+
+```
+GET http://20.207.122.201/evaluation-service/notifications
+    ?limit=100
+    &notification_type=Placement   ← optional, for type filter
+    Authorization: Bearer <token>
+```
+
+Supported `notification_type` values: `Placement`, `Result`, `Event`
+
+## Screenshot
+
+![Stage 2 UI](notification-ui/Screenshot%202026-05-02%20at%2012.01.04%E2%80%AFPM.png)
+
