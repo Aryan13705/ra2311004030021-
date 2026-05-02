@@ -15,6 +15,8 @@
 
 ## Note
 - Added USE_MOCK support if AUTH_TOKEN not available
+- export USE_MOCK=true
+node index.js
 ## Output Screenshot
 
 ![Output](output.png)
