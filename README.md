@@ -83,8 +83,9 @@ FINAL OUTPUT: [
 
 Screenshot of actual output → `output.png`
 
-
 ![Output](output.png)
+
+---
 
 # Stage 2
 
@@ -174,5 +175,3 @@ Supported `notification_type` values: `Placement`, `Result`, `Event`
 ## Screenshot
 
 ![Stage 2 UI](notification-ui/output2.png)
-
-
